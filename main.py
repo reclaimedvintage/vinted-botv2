@@ -1,8 +1,5 @@
 import requests
 import time
-import random
-from flask import Flask
-import threading
 
 WEBHOOK_URL = "https://discord.com/api/webhooks/1512845629938860242/cI1uxNg-J9TFNZJThRcJVg0AX6Y-I5SP4_V44OyzvPL0V6Rg_6MuasGmzQ_NFRWL5Ng3"
 
@@ -12,23 +9,13 @@ SEARCH_TERMS = [
 ]
 
 SEEN = set()
-app = Flask(__name__)
-
-# ✅ Create persistent session (IMPORTANT)
-session = requests.Session()
-
-# ✅ Realistic headers (rotating)
-USER_AGENTS = [
-    "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
-]
 
 def send_discord(message):
     try:
         response = requests.post(WEBHOOK_URL, json={"content": message})
-        print("Discord:", response.status_code, flush=True)
+        print("Discord status:", response.status_code)
     except Exception as e:
-        print("Discord error:", e, flush=True)
+        print("Discord error:", e)
 
 def get_category(price):
     if price <= 10:
@@ -42,89 +29,62 @@ def fetch_items(search):
     url = "https://www.vinted.co.uk/api/v2/catalog/items"
 
     headers = {
-        "User-Agent": random.choice(USER_AGENTS),
-        "Accept": "application/json",
-        "Accept-Language": "en-GB,en;q=0.9",
-        "Referer": "https://www.vinted.co.uk/",
-        "Origin": "https://www.vinted.co.uk",
-        "Connection": "keep-alive"
+        "User-Agent": "Mozilla/5.0",
+        "Accept": "application/json"
     }
 
     params = {
         "search_text": search,
         "price_to": 20,
         "order": "newest_first",
-        "per_page": 20,
-        "currency": "GBP"
+        "per_page": 20
     }
 
+    response = requests.get(url, headers=headers, params=params)
+
+    print("Status:", response.status_code)
+
+    if response.status_code != 200:
+        return []
+
     try:
-        response = session.get(url, headers=headers, params=params, timeout=10)
-
-        print("Status:", response.status_code, flush=True)
-
-        if response.status_code != 200:
-            return []
-
         data = response.json()
-        items = data.get("items", [])
-
-        print("Items returned:", len(items), flush=True)
-        return items
-
-    except Exception as e:
-        print("Fetch error:", e, flush=True)
+        return data.get("items", [])
+    except:
         return []
 
 def run_bot():
-    print("🚀 BOT STARTED", flush=True)
-    send_discord("✅ Bot started (stealth mode)")
+    print("🚀 Bot started")
+    send_discord("✅ Bot is running!")
 
     while True:
-        try:
-            print("🔄 Checking Vinted...", flush=True)
+        for term in SEARCH_TERMS:
+            items = fetch_items(term)
 
-            for term in SEARCH_TERMS:
-                items = fetch_items(term)
+            for item in items:
+                item_id = item["id"]
+                title = item["title"]
+                price = float(item["price"])
 
-                for item in items:
-                    item_id = item["id"]
-                    title = item["title"]
-                    price = float(item["price"])
+                if item_id in SEEN:
+                    continue
 
-                    if item_id in SEEN:
-                        continue
+                SEEN.add(item_id)
 
-                    SEEN.add(item_id)
+                category = get_category(price)
+                url = item.get("url", f"https://www.vinted.co.uk/items/{item_id}")
 
-                    category = get_category(price)
+                print("✅ Found:", title)
 
-                    url = item.get("url", f"https://www.vinted.co.uk/items/{item_id}")
-
-                    print("✅ Found:", title, flush=True)
-
-                    msg = f"""{category} Ralph Lauren
+                msg = f"""{category} Ralph Lauren
 
 👕 {title}
 💰 £{price}
 
 🔗 {url}
 """
+                send_discord(msg)
 
-                    send_discord(msg)
+        time.sleep(30)
 
-            # ✅ RANDOM DELAY (CRITICAL)
-            sleep_time = random.randint(25, 40)
-            print(f"⏳ Sleeping {sleep_time}s...", flush=True)
-            time.sleep(sleep_time)
-
-        except Exception as e:
-            print("Error:", e, flush=True)
-            time.sleep(60)
-
-@app.route("/")
-def home():
-    return "Bot is running"
-
-threading.Thread(target=run_bot, daemon=True).start()
-app.run(host="0.0.0.0", port=10000)
+run_bot()
