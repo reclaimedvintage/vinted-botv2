@@ -1,5 +1,6 @@
 import requests
 import time
+import random
 from flask import Flask
 import threading
 
@@ -13,15 +14,23 @@ SEARCH_TERMS = [
 SEEN = set()
 app = Flask(__name__)
 
+# ✅ Create persistent session (IMPORTANT)
+session = requests.Session()
+
+# ✅ Realistic headers (rotating)
+USER_AGENTS = [
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
+]
+
 def send_discord(message):
     try:
         response = requests.post(WEBHOOK_URL, json={"content": message})
         print("Discord:", response.status_code, flush=True)
     except Exception as e:
-        print("Webhook error:", e, flush=True)
+        print("Discord error:", e, flush=True)
 
 def get_category(price):
-    price = float(price)
     if price <= 10:
         return "🚨 URGENT"
     elif price <= 15:
@@ -32,33 +41,44 @@ def get_category(price):
 def fetch_items(search):
     url = "https://www.vinted.co.uk/api/v2/catalog/items"
 
+    headers = {
+        "User-Agent": random.choice(USER_AGENTS),
+        "Accept": "application/json",
+        "Accept-Language": "en-GB,en;q=0.9",
+        "Referer": "https://www.vinted.co.uk/",
+        "Origin": "https://www.vinted.co.uk",
+        "Connection": "keep-alive"
+    }
+
     params = {
         "search_text": search,
         "price_to": 20,
         "order": "newest_first",
-        "per_page": 50,
+        "per_page": 20,
         "currency": "GBP"
     }
 
-    headers = {
-        "User-Agent": "Mozilla/5.0",
-        "Accept": "application/json"
-    }
-
-    r = requests.get(url, params=params, headers=headers)
-
-    print("Status:", r.status_code, flush=True)
-
     try:
-        data = r.json()
-        print("Items returned:", len(data.get("items", [])), flush=True)
-        return data.get("items", [])
-    except:
+        response = session.get(url, headers=headers, params=params, timeout=10)
+
+        print("Status:", response.status_code, flush=True)
+
+        if response.status_code != 200:
+            return []
+
+        data = response.json()
+        items = data.get("items", [])
+
+        print("Items returned:", len(items), flush=True)
+        return items
+
+    except Exception as e:
+        print("Fetch error:", e, flush=True)
         return []
 
 def run_bot():
-    print("🚀 BOT LOOP STARTED", flush=True)
-    send_discord("✅ Bot started and running")
+    print("🚀 BOT STARTED", flush=True)
+    send_discord("✅ Bot started (stealth mode)")
 
     while True:
         try:
@@ -72,25 +92,31 @@ def run_bot():
                     title = item["title"]
                     price = float(item["price"])
 
-                    if item_id not in SEEN:
-                        SEEN.add(item_id)
+                    if item_id in SEEN:
+                        continue
 
-                        category = get_category(price)
+                    SEEN.add(item_id)
 
-                        url = item.get("url", f"https://www.vinted.co.uk/items/{item_id}")
+                    category = get_category(price)
 
-                        print("✅ Sending:", title, flush=True)
+                    url = item.get("url", f"https://www.vinted.co.uk/items/{item_id}")
 
-                        msg = f"""{category} Ralph Lauren
+                    print("✅ Found:", title, flush=True)
+
+                    msg = f"""{category} Ralph Lauren
 
 👕 {title}
 💰 £{price}
 
 🔗 {url}
 """
-                        send_discord(msg)
 
-            time.sleep(20)
+                    send_discord(msg)
+
+            # ✅ RANDOM DELAY (CRITICAL)
+            sleep_time = random.randint(25, 40)
+            print(f"⏳ Sleeping {sleep_time}s...", flush=True)
+            time.sleep(sleep_time)
 
         except Exception as e:
             print("Error:", e, flush=True)
