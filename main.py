@@ -119,7 +119,8 @@ def run_bot():
 
 @app.route("/")
 def home():
-    return "Bot is running!"
+    send_discord("✅ Test message from bot")
+    return "Bot is running"
 
 # run bot in background
 threading.Thread(target=run_bot).start()
