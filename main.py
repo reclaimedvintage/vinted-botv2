@@ -28,9 +28,9 @@ def get_category(price):
 def send_discord(message):
     try:
         response = requests.post(WEBHOOK_URL, json={"content": message})
-        print("Webhook response:", response.status_code)
+        print("Discord status:", response.status_code)
     except Exception as e:
-        print("Webhook failed:", e)
+        print("Webhook error:", e)
 
 def fetch_items(search):
     url = "https://www.vinted.co.uk/api/v2/catalog/items"
@@ -38,25 +38,37 @@ def fetch_items(search):
     params = {
         "search_text": search,
         "price_to": 20,
-        "order": "newest_first"
+        "order": "newest_first",
+        "currency": "GBP",
+        "per_page": 50
     }
 
     headers = {
-        "User-Agent": "Mozilla/5.0"
+        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X)",
+        "Accept": "application/json",
+        "Accept-Language": "en-GB,en;q=0.9",
+        "Referer": "https://www.vinted.co.uk/"
     }
 
     res = requests.get(url, params=params, headers=headers)
-    return res.json()
+
+    print("Status:", res.status_code)
+
+    try:
+        data = res.json()
+        print("Items returned:", len(data.get("items", [])))
+        return data
+    except:
+        print("JSON parse failed")
+        return {"items": []}
 
 def is_valid(item):
     title = item["title"].lower()
     price = float(item["price"])
 
-    # ✅ Only requirement: contains 'ralph'
     if "ralph" not in title:
         return False
 
-    # ✅ Safety: enforce price
     if price > 20:
         return False
 
@@ -67,7 +79,6 @@ def format_item(item):
     price = float(item["price"])
     size = item.get("size_title", "N/A")
 
-    # ✅ FIXED URL HANDLING
     url = item.get("url", f"https://www.vinted.co.uk/items/{item['id']}")
 
     category = get_category(price)
@@ -85,6 +96,9 @@ def run_bot():
     while True:
         try:
             print("Checking for items...")
+
+            # ✅ TEST MESSAGE EVERY LOOP
+            send_discord("🔄 Bot running check...")
 
             for search in SEARCHES:
                 data = fetch_items(search)
@@ -107,10 +121,9 @@ def run_bot():
 
 @app.route("/")
 def home():
+    # ✅ TEST WHEN YOU OPEN THE LINK
+    send_discord("✅ Bot is LIVE (manual check)")
     return "Bot is running"
 
-# run bot in background
 threading.Thread(target=run_bot).start()
-
-# start web server
 app.run(host="0.0.0.0", port=10000)
