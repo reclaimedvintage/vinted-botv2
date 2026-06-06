@@ -67,9 +67,7 @@ def is_valid(item):
     # ✅ Clothing filter
     keywords = ["shirt", "polo", "jumper", "sweater", "knit"]
     if not any(k in title for k in keywords):
-        return False
 
-    return True
 
 def format_item(item):
     title = item["title"]
