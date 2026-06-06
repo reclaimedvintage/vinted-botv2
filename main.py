@@ -1,13 +1,13 @@
 import requests
 import time
-import re
 from flask import Flask
 import threading
 
 WEBHOOK_URL = "https://discord.com/api/webhooks/1512845629938860242/cI1uxNg-J9TFNZJThRcJVg0AX6Y-I5SP4_V44OyzvPL0V6Rg_6MuasGmzQ_NFRWL5Ng3"
 
-SEARCH_URLS = [
-    "https://www.vinted.co.uk/catalog?search_text=ralph+lauren&price_to=20&order=newest_first"
+SEARCH_TERMS = [
+    "ralph lauren",
+    "polo ralph lauren"
 ]
 
 SEEN = set()
@@ -16,9 +16,9 @@ app = Flask(__name__)
 def send_discord(message):
     try:
         response = requests.post(WEBHOOK_URL, json={"content": message})
-        print("Discord status:", response.status_code)
+        print("Discord:", response.status_code, flush=True)
     except Exception as e:
-        print("Webhook error:", e)
+        print("Webhook error:", e, flush=True)
 
 def get_category(price):
     price = float(price)
@@ -29,81 +29,76 @@ def get_category(price):
     else:
         return "🟡 POTENTIAL"
 
-def fetch_page(url):
-    headers = {
-        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X)"
+def fetch_items(search):
+    url = "https://www.vinted.co.uk/api/v2/catalog/items"
+
+    params = {
+        "search_text": search,
+        "price_to": 20,
+        "order": "newest_first",
+        "per_page": 50,
+        "currency": "GBP"
     }
 
-    res = requests.get(url, headers=headers)
-    return res.text
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        "Accept": "application/json"
+    }
 
-def extract_items(html):
-    items = []
+    r = requests.get(url, params=params, headers=headers)
 
-    # ✅ Extract item blocks
-    matches = re.findall(r'href="(/items/\d+[^"]+)"[^>]*>.*?title="([^"]+)"', html)
+    print("Status:", r.status_code, flush=True)
 
-    for match in matches:
-        link = "https://www.vinted.co.uk" + match[0]
-        title = match[1]
-
-        # ✅ Try to find price nearby
-        price_match = re.search(r'£(\d+)', html)
-        price = float(price_match.group(1)) if price_match else 0
-
-        if price <= 20:
-            items.append({
-                "id": link,
-                "title": title,
-                "price": price,
-                "url": link
-            })
-
-    return items
+    try:
+        data = r.json()
+        print("Items returned:", len(data.get("items", [])), flush=True)
+        return data.get("items", [])
+    except:
+        return []
 
 def run_bot():
-    print("🚀 BOT STARTED")
-
-    send_discord("✅ Scraper bot started")
+    print("🚀 BOT LOOP STARTED", flush=True)
+    send_discord("✅ Bot started and running")
 
     while True:
         try:
-            print("🔄 Checking site...")
+            print("🔄 Checking Vinted...", flush=True)
 
-            for url in SEARCH_URLS:
-                html = fetch_page(url)
-
-                items = extract_items(html)
-
-                print(f"Items found: {len(items)}")
+            for term in SEARCH_TERMS:
+                items = fetch_items(term)
 
                 for item in items:
-                    if item["id"] not in SEEN:
-                        SEEN.add(item["id"])
+                    item_id = item["id"]
+                    title = item["title"]
+                    price = float(item["price"])
 
-                        category = get_category(item["price"])
+                    if item_id not in SEEN:
+                        SEEN.add(item_id)
 
-                        msg = f"""{category} Ralph Lauren Deal
+                        category = get_category(price)
 
-👕 {item['title']}
-💰 £{item['price']}
+                        url = item.get("url", f"https://www.vinted.co.uk/items/{item_id}")
 
-🔗 {item['url']}"""
+                        print("✅ Sending:", title, flush=True)
 
-                        print("✅ New item:", item["title"])
+                        msg = f"""{category} Ralph Lauren
 
+👕 {title}
+💰 £{price}
+
+🔗 {url}
+"""
                         send_discord(msg)
 
             time.sleep(20)
 
         except Exception as e:
-            print("Error:", e)
+            print("Error:", e, flush=True)
             time.sleep(60)
 
 @app.route("/")
 def home():
     return "Bot is running"
 
-threading.Thread(target=run_bot).start()
-
+threading.Thread(target=run_bot, daemon=True).start()
 app.run(host="0.0.0.0", port=10000)
