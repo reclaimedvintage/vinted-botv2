@@ -20,7 +20,6 @@ SEARCHES = [
 ]
 
 SEEN = set()
-
 app = Flask(__name__)
 
 def get_category(price):
@@ -33,15 +32,17 @@ def get_category(price):
         return "🟡 POTENTIAL"
 
 def send_discord(message):
-    requests.post(WEBHOOK_URL, json={"content": message})
+    try:
+        requests.post(WEBHOOK_URL, json={"content": message})
+    except:
+        print("Failed to send message")
 
 def fetch_items(search):
-    url = "https://www.vinted.co.uk/api/v2/catalog/items"
-    
+    url = "https://www.vinted.co.uk/catalog?search_id=34787348416&page=1&time=1780765191"
+
     params = {
         "search_text": search,
         "price_to": 25,
-        "catalog_ids": 5,
         "order": "newest_first"
     }
 
@@ -54,35 +55,24 @@ def fetch_items(search):
 
 def is_valid(item):
     title = item["title"].lower()
-    condition = item["status"]
 
-    # ✅ Condition filter
-    if condition not in [
-        "very_good",
-        "new_with_tags",
-        "new_without_tags"
-    ]:
+    # ✅ Looser clothing filter
+    keywords = [
+        "shirt", "polo", "jumper", "sweater",
+        "knit", "hoodie", "zip", "ralph"
+    ]
+
+    if not any(k in title for k in keywords):
         return False
 
-    # ✅ Clothing filter
-    keywords = ["shirt", "polo", "jumper", "sweater", "knit"]
-
+    return True
 
 def format_item(item):
     title = item["title"]
     price = float(item["price"])
     size = item.get("size_title", "N/A")
-    condition = item["status"]
-
-    condition_map = {
-        "very_good": "Very Good",
-        "new_with_tags": "New with tags",
-        "new_without_tags": "New without tags"
-    }
-
-    condition = condition_map.get(condition, condition)
-
     url = f"https://www.vinted.co.uk/items/{item['id']}"
+
     category = get_category(price)
 
     return f"""{category} Ralph Lauren Deal
@@ -90,7 +80,6 @@ def format_item(item):
 👕 {title}
 💰 £{price}
 📏 Size: {size}
-✅ Condition: {condition}
 
 🔗 {url}
 """
@@ -98,29 +87,27 @@ def format_item(item):
 def run_bot():
     while True:
         try:
+            print("Checking for items...")
             for search in SEARCHES:
                 data = fetch_items(search)
 
-                for item in data["items"]:
+                for item in data.get("items", []):
                     item_id = item["id"]
 
                     if item_id not in SEEN and is_valid(item):
                         SEEN.add(item_id)
                         send_discord(format_item(item))
 
-            time.sleep(30)
+            time.sleep(25)
 
         except Exception as e:
-            print(e)
+            print("Error:", e)
             time.sleep(60)
 
 @app.route("/")
 def home():
-    send_discord("✅ Test message from bot")
     return "Bot is running"
 
-# run bot in background
 threading.Thread(target=run_bot).start()
 
-# run web server
 app.run(host="0.0.0.0", port=10000)
