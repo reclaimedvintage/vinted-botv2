@@ -8,15 +8,9 @@ WEBHOOK_URL = "https://discord.com/api/webhooks/1512845629938860242/cI1uxNg-J9TF
 SEARCHES = [
     "ralph lauren",
     "polo ralph lauren",
-    "ralph lauren shirt",
-    "ralph lauren polo",
-    "ralph lauren jumper",
-    "ralph lauren sweater",
-    "ralph lauren knitwear",
-    "ralph lauren vintage",
     "ralph laurens",
-    "ralph laurn",
-    "ralph laren"
+    "ralph laren",
+    "ralph laurn"
 ]
 
 SEEN = set()
@@ -33,16 +27,17 @@ def get_category(price):
 
 def send_discord(message):
     try:
-        requests.post(WEBHOOK_URL, json={"content": message})
-    except:
-        print("Failed to send message")
+        response = requests.post(WEBHOOK_URL, json={"content": message})
+        print("Webhook response:", response.status_code)
+    except Exception as e:
+        print("Webhook failed:", e)
 
 def fetch_items(search):
-    url = "https://www.vinted.co.uk/catalog?search_id=34787348416&page=1&time=1780765191"
+    url = "https://www.vinted.co.uk/api/v2/catalog/items"
 
     params = {
         "search_text": search,
-        "price_to": 25,
+        "price_to": 20,
         "order": "newest_first"
     }
 
@@ -55,14 +50,14 @@ def fetch_items(search):
 
 def is_valid(item):
     title = item["title"].lower()
+    price = float(item["price"])
 
-    # ✅ Looser clothing filter
-    keywords = [
-        "shirt", "polo", "jumper", "sweater",
-        "knit", "hoodie", "zip", "ralph"
-    ]
+    # ✅ Only requirement: contains 'ralph'
+    if "ralph" not in title:
+        return False
 
-    if not any(k in title for k in keywords):
+    # ✅ Safety: enforce price
+    if price > 20:
         return False
 
     return True
@@ -71,7 +66,9 @@ def format_item(item):
     title = item["title"]
     price = float(item["price"])
     size = item.get("size_title", "N/A")
-    url = f"https://www.vinted.co.uk/items/{item['id']}"
+
+    # ✅ FIXED URL HANDLING
+    url = item.get("url", f"https://www.vinted.co.uk/items/{item['id']}")
 
     category = get_category(price)
 
@@ -88,6 +85,7 @@ def run_bot():
     while True:
         try:
             print("Checking for items...")
+
             for search in SEARCHES:
                 data = fetch_items(search)
 
@@ -96,9 +94,12 @@ def run_bot():
 
                     if item_id not in SEEN and is_valid(item):
                         SEEN.add(item_id)
+
+                        print("✅ Found:", item["title"])
+
                         send_discord(format_item(item))
 
-            time.sleep(25)
+            time.sleep(20)
 
         except Exception as e:
             print("Error:", e)
@@ -108,6 +109,8 @@ def run_bot():
 def home():
     return "Bot is running"
 
+# run bot in background
 threading.Thread(target=run_bot).start()
 
+# start web server
 app.run(host="0.0.0.0", port=10000)
